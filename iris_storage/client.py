@@ -24,7 +24,6 @@ class StorageClient:
         logger.info(f"🔍 [Async] Getting metadata: {path} (bucket: {bucket})")
         try:
             params = {"bucket": bucket, "path": path}
-            # On utilise le client async déjà configuré avec STORAGE_SIDECAR_URL
             response = await cls._async_client.get("/metadata", params=params)
             response.raise_for_status()
             
