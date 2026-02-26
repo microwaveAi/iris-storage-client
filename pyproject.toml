@@ -2,9 +2,7 @@
 name = "iris-storage-client"
 version = "0.1.0"
 description = ""
-authors = [
-    {name = "Aurelien Vialon",email = "aurelien@diverta.co.jp"}
-]
+
 requires-python = ">=3.11"
 dependencies = [
     "httpx (>=0.28.1,<0.29.0)"
