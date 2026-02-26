@@ -15,7 +15,44 @@ class StorageClient:
     _async_client = httpx.AsyncClient(base_url=STORAGE_SIDECAR_URL, timeout=60.0)
     _sync_client = httpx.Client(base_url=STORAGE_SIDECAR_URL, timeout=60.0)
 
-    # --- MÉTHODES ASYNCHRONES (FastAPI) ---
+    @classmethod
+    async def get_metadata(cls, bucket: str, path: str):
+        """
+        Récupère les dimensions et le format d'une image sans la télécharger entièrement.
+        """
+        start_time = time.perf_counter()
+        logger.info(f"🔍 [Async] Getting metadata: {path} (bucket: {bucket})")
+        try:
+            params = {"bucket": bucket, "path": path}
+            # On utilise le client async déjà configuré avec STORAGE_SIDECAR_URL
+            response = await cls._async_client.get("/metadata", params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            logger.info(f"✅ [Async] Metadata success: {data.get('width')}x{data.get('height')} in {time.perf_counter() - start_time:.3f}s")
+            return data
+        except Exception as e:
+            logger.error(f"💥 [Async] Metadata failed for {path}: {str(e)}")
+            raise
+
+    @classmethod
+    def get_metadata_sync(cls, bucket: str, path: str):
+        """
+        Récupère les dimensions et le format d'une image (Synchrone).
+        """
+        start_time = time.perf_counter()
+        logger.info(f"🔍 [Sync] Getting metadata: {path} (bucket: {bucket})")
+        try:
+            params = {"bucket": bucket, "path": path}
+            response = cls._sync_client.get("/metadata", params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            logger.info(f"✅ [Sync] Metadata success: {data.get('width')}x{data.get('height')} in {time.perf_counter() - start_time:.3f}s")
+            return data
+        except Exception as e:
+            logger.error(f"💥 [Sync] Metadata failed for {path}: {str(e)}")
+            raise
 
     @classmethod
     async def upload_bytes(cls, bucket: str, path: str, data: bytes, content_type: str = "application/octet-stream"):
