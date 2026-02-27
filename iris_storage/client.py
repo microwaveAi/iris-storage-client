@@ -290,3 +290,27 @@ class StorageClient:
         except Exception as e:
             logger.error(f"💥 [Sync] Copy failed: {str(e)}")
             raise
+
+    @classmethod
+    async def copy_folder(cls, src_prefix: str, dest_prefix: str, bucket: Optional[str] = None):
+        """
+        Duplique tout un répertoire dans GCS (Async).
+        """
+        params = {"src_prefix": src_prefix, "dest_prefix": dest_prefix}
+        if bucket: params["bucket"] = bucket
+        
+        response = await cls._async_client.post("/copy-folder", params=params)
+        response.raise_for_status()
+        return response.json()
+
+    @classmethod
+    def copy_folder_sync(cls, src_prefix: str, dest_prefix: str, bucket: Optional[str] = None):
+        """
+        Duplique tout un répertoire dans GCS (Sync pour Celery).
+        """
+        params = {"src_prefix": src_prefix, "dest_prefix": dest_prefix}
+        if bucket: params["bucket"] = bucket
+        
+        response = cls._sync_client.post("/copy-folder", params=params)
+        response.raise_for_status()
+        return response.json()
