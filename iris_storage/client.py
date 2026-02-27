@@ -3,6 +3,8 @@ import os
 import logging
 import time
 
+from typing import Optional
+
 logger = logging.getLogger("iris.storage")
 # On ne garde qu'un seul basicConfig global
 if not logger.handlers:
@@ -237,3 +239,54 @@ class StorageClient:
         response = cls._sync_client.delete("/delete", params=params)
         response.raise_for_status()
         return True
+
+    @classmethod
+    async def copy_object(cls, src_path: str, dest_path: str, bucket: Optional[str] = None):
+        """
+        Duplique un objet d'un chemin à un autre via le sidecar Go (Async).
+        L'opération se fait côté serveur GCS (très rapide).
+        """
+        start_time = time.perf_counter()
+        logger.info(f"👯 [Async] Copying: {src_path} -> {dest_path}")
+        try:
+            params = {
+                "src_filename": src_path, 
+                "dest_filename": dest_path
+            }
+            if bucket:
+                params["bucket"] = bucket
+                
+            response = await cls._async_client.post("/copy", params=params)
+            response.raise_for_status()
+            
+            duration = time.perf_counter() - start_time
+            logger.info(f"✅ [Async] Copy success in {duration:.3f}s")
+            return response.json()
+        except Exception as e:
+            logger.error(f"💥 [Async] Copy failed: {str(e)}")
+            raise
+
+    @classmethod
+    def copy_object_sync(cls, src_path: str, dest_path: str, bucket: Optional[str] = None):
+        """
+        Duplique un objet d'un chemin à un autre (Synchrone - Celery).
+        """
+        start_time = time.perf_counter()
+        logger.info(f"👯 [Sync] Copying: {src_path} -> {dest_path}")
+        try:
+            params = {
+                "src_filename": src_path, 
+                "dest_filename": dest_path
+            }
+            if bucket:
+                params["bucket"] = bucket
+
+            response = cls._sync_client.post("/copy", params=params)
+            response.raise_for_status()
+            
+            duration = time.perf_counter() - start_time
+            logger.info(f"✅ [Sync] Copy success in {duration:.3f}s")
+            return response.json()
+        except Exception as e:
+            logger.error(f"💥 [Sync] Copy failed: {str(e)}")
+            raise
