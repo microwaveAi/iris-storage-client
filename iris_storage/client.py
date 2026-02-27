@@ -8,12 +8,15 @@ logger = logging.getLogger("iris.storage")
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
 
-STORAGE_SIDECAR_URL = os.getenv("STORAGE_SIDECAR_URL", "http://storage-sidecar:5000")
+STORAGE_PROTOCOL = os.getenv("STORAGE_PROTOCOL", "http")
+STORAGE_HOST = os.getenv("STORAGE_HOST", "storage-sidecar")
+STORAGE_PORT = os.getenv("STORAGE_PORT", "5000")
+
+STORAGE_URL = f"{STORAGE_PROTOCOL}://{STORAGE_HOST}:{STORAGE_PORT}"
 
 class StorageClient:
-    # Clients partagés pour optimiser le pool de connexions
-    _async_client = httpx.AsyncClient(base_url=STORAGE_SIDECAR_URL, timeout=60.0)
-    _sync_client = httpx.Client(base_url=STORAGE_SIDECAR_URL, timeout=60.0)
+    _async_client = httpx.AsyncClient(base_url=STORAGE_URL, timeout=60.0)
+    _sync_client = httpx.Client(base_url=STORAGE_URL, timeout=60.0)
 
     @classmethod
     async def get_metadata(cls, bucket: str, path: str):
