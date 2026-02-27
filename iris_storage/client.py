@@ -6,7 +6,7 @@ import time
 from typing import Optional
 
 logger = logging.getLogger("iris.storage")
-# On ne garde qu'un seul basicConfig global
+
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO)
 
@@ -87,8 +87,6 @@ class StorageClient:
             logger.error(f"💥 [Async] Download failed for {path}: {str(e)}")
             raise
 
-    # --- MÉTHODES SYNCHRONES (Celery / Scripts) ---
-
     @classmethod
     def upload_bytes_sync(cls, bucket: str, path: str, data: bytes, content_type: str = "application/octet-stream"):
         start_time = time.perf_counter()
@@ -96,7 +94,6 @@ class StorageClient:
         try:
             files = {'file': (path, data, content_type)}
             params = {"filename": path, "bucket": bucket}
-            # Utilisation du client synchrone
             response = cls._sync_client.post("/upload", files=files, params=params)
             response.raise_for_status()
             logger.info(f"✅ [Sync] Upload success: {path} in {time.perf_counter() - start_time:.3f}s")
@@ -130,10 +127,7 @@ class StorageClient:
         
         params = {"bucket": bucket}
         
-        # On utilise .stream() pour ne pas charger le fichier en mémoire
-        # Le 'async with' est crucial pour garder la connexion ouverte pendant le stream
         try:
-            # On définit un générateur interne
             async def _aiter_stream():
                 async with cls._async_client.stream("GET", f"/download/{path}", params=params) as response:
                     if response.status_code != 200:
@@ -243,8 +237,7 @@ class StorageClient:
     @classmethod
     async def copy_object(cls, src_path: str, dest_path: str, bucket: Optional[str] = None):
         """
-        Duplique un objet d'un chemin à un autre via le sidecar Go (Async).
-        L'opération se fait côté serveur GCS (très rapide).
+        Duplicate an object from one path to another in GCS (Async). Useful for renaming or moving files without downloading/uploading.
         """
         start_time = time.perf_counter()
         logger.info(f"👯 [Async] Copying: {src_path} -> {dest_path}")
@@ -269,7 +262,7 @@ class StorageClient:
     @classmethod
     def copy_object_sync(cls, src_path: str, dest_path: str, bucket: Optional[str] = None):
         """
-        Duplique un objet d'un chemin à un autre (Synchrone - Celery).
+        Duplicate an object from one path to another in GCS (Synchronous - for Celery tasks).
         """
         start_time = time.perf_counter()
         logger.info(f"👯 [Sync] Copying: {src_path} -> {dest_path}")
@@ -294,7 +287,7 @@ class StorageClient:
     @classmethod
     async def copy_folder(cls, src_prefix: str, dest_prefix: str, bucket: Optional[str] = None):
         """
-        Duplique tout un répertoire dans GCS (Async).
+        Duplicate an entire folder in GCS (Async).
         """
         params = {"src_prefix": src_prefix, "dest_prefix": dest_prefix}
         if bucket: params["bucket"] = bucket
@@ -306,7 +299,7 @@ class StorageClient:
     @classmethod
     def copy_folder_sync(cls, src_prefix: str, dest_prefix: str, bucket: Optional[str] = None):
         """
-        Duplique tout un répertoire dans GCS (Sync pour Celery).
+        Duplicate an entire folder in GCS (Synchronous - for Celery tasks).
         """
         params = {"src_prefix": src_prefix, "dest_prefix": dest_prefix}
         if bucket: params["bucket"] = bucket
