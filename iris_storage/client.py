@@ -2,6 +2,7 @@ import httpx
 import os
 import logging
 import time
+from contextlib import asynccontextmanager
 
 from typing import Optional
 
@@ -85,6 +86,21 @@ class StorageClient:
             return response.content
         except Exception as e:
             logger.error(f"💥 [Async] Download failed for {path}: {str(e)}")
+            raise
+
+    @classmethod
+    @asynccontextmanager
+    async def download_stream(cls, bucket: str, path: str):
+        start_time = time.perf_counter()
+        logger.info(f"🌊 [Stream] Starting download: {path} (bucket: {bucket})")
+        try:
+            params = {"bucket": bucket}
+            async with cls._async_client.stream("GET", f"/download/{path}", params=params) as response:
+                response.raise_for_status()
+                logger.info(f"✅ [Stream] Connection established for {path} in {time.perf_counter() - start_time:.3f}s")
+                yield response.aiter_bytes()
+        except Exception as e:
+            logger.error(f"💥 [Stream] Download failed for {path}: {str(e)}")
             raise
 
     @classmethod
