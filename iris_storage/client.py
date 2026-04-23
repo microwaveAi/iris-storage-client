@@ -105,42 +105,38 @@ class StorageClient:
             raise
 
     @classmethod
-    def upload_stream_sync(cls, bucket: str, path: str, file_obj: UploadFile, content_type: str = "application/octet-stream"):
+    def upload_stream_sync(cls, bucket: str, path: str, file_obj: UploadFile):
         """
-        Synchronously uploads a file using streaming (chunks) to minimize memory usage.
-        This version does not use async/await.
+        Synchronously uploads a file using multipart streaming.
+        This is compatible with Go's r.FormFile("file").
         """
         start_time = time.perf_counter()
-        logger.info(f"🌊 [Sync Stream] Uploading: {path} (bucket: {bucket})")
+        logger.info(f"📤 [Sync Multipart] Uploading: {path} (bucket: {bucket})")
         
-        def file_generator():
-            # Standard synchronous seek
+        try:
+            # Reset pointer
             file_obj.file.seek(0)
             
-            # Read in 1MB chunks
-            while True:
-                chunk = file_obj.file.read(1024 * 1024)
-                if not chunk:
-                    break
-                yield chunk
-
-        try:
+            # Passing the file-like object in 'files' tells httpx 
+            # to stream it instead of loading it into memory.
+            files = {
+                'file': (file_obj.filename, file_obj.file, file_obj.content_type)
+            }
             params = {"filename": path, "bucket": bucket}
-            headers = {"Content-Type": content_type}
             
-            # Using the sync client with a generator for 'content'
+            # Note: Do NOT manually set Content-Type header here, 
+            # httpx will generate the correct Multipart boundary header.
             response = cls._sync_client.post(
                 "/upload", 
-                content=file_generator(), 
-                params=params,
-                headers=headers
+                files=files, 
+                params=params
             )
             response.raise_for_status()
             
-            logger.info(f"✅ [Sync Stream] Upload success in {time.perf_counter() - start_time:.3f}s")
+            logger.info(f"✅ [Sync Multipart] Success in {time.perf_counter() - start_time:.3f}s")
             return response.json()
         except Exception as e:
-            logger.error(f"💥 [Sync Stream] Upload failed: {str(e)}")
+            logger.error(f"💥 [Sync Multipart] Failed: {str(e)}")
             raise
 
     @classmethod
