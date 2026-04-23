@@ -60,26 +60,37 @@ class StorageClient:
             raise
 
     @classmethod
-    async def upload_stream(cls, bucket: str, path: str, file_obj, content_type: str = "application/octet-stream"):
+    async def upload_stream(cls, bucket: str, path: str, file_obj: UploadFile, content_type: str = "application/octet-stream"):
         """
         Uploads a file using streaming (chunks) to minimize memory usage.
-        Passes the file generator directly to the async client.
         """
         start_time = time.perf_counter()
         logger.info(f"🌊 [Async Stream] Uploading: {path} (bucket: {bucket})")
         
         async def file_generator():
-            # Ensure we start reading from the beginning
-            await file_obj.seek(0)
+            # In some FastAPI versions, seek is sync. 
+            # We wrap it to be safe or just call it normally.
+            try:
+                await file_obj.seek(0)
+            except TypeError:
+                file_obj.file.seek(0)
+
             # Read in 1MB chunks
-            while chunk := await file_obj.read(1024 * 1024):
+            while True:
+                # Check if read needs to be awaited
+                chunk = file_obj.read(1024 * 1024)
+                if hasattr(chunk, "__await__"):
+                    chunk = await chunk
+                
+                if not chunk:
+                    break
                 yield chunk
 
         try:
             params = {"filename": path, "bucket": bucket}
             headers = {"Content-Type": content_type}
             
-            # Sending the generator via 'content' performs a streamed request
+            # Streaming the generator via 'content'
             response = await cls._async_client.post(
                 "/upload", 
                 content=file_generator(), 
