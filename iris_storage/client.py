@@ -60,7 +60,7 @@ class StorageClient:
             raise
 
     @classmethod
-    async def upload_stream(cls, bucket: str, path: str, file_obj: UploadFile, content_type: str = "application/octet-stream"):
+    async def upload_stream(cls, bucket: str, path: str, file_obj, content_type: str = "application/octet-stream"):
         """
         Uploads a file using streaming (chunks) to minimize memory usage.
         """
@@ -105,7 +105,7 @@ class StorageClient:
             raise
 
     @classmethod
-    def upload_stream_sync(cls, bucket: str, path: str, file_obj: UploadFile):
+    def upload_stream_sync(cls, bucket: str, path: str, file_obj):
         """
         Synchronously uploads a file using multipart streaming.
         This is compatible with Go's r.FormFile("file").
