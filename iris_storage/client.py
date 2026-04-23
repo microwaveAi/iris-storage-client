@@ -60,6 +60,40 @@ class StorageClient:
             raise
 
     @classmethod
+    async def upload_stream(cls, bucket: str, path: str, file_obj, content_type: str = "application/octet-stream"):
+        """
+        Uploads a file using streaming (chunks) to minimize memory usage.
+        Passes the file generator directly to the async client.
+        """
+        start_time = time.perf_counter()
+        logger.info(f"🌊 [Async Stream] Uploading: {path} (bucket: {bucket})")
+        
+        async def file_generator():
+            # Ensure we start reading from the beginning
+            await file_obj.seek(0)
+            # Read in 1MB chunks
+            while chunk := await file_obj.read(1024 * 1024):
+                yield chunk
+
+        try:
+            params = {"filename": path, "bucket": bucket}
+            headers = {"Content-Type": content_type}
+            
+            # Sending the generator via 'content' performs a streamed request
+            response = await cls._async_client.post(
+                "/upload", 
+                content=file_generator(), 
+                params=params,
+                headers=headers
+            )
+            response.raise_for_status()
+            logger.info(f"✅ [Async Stream] Upload success in {time.perf_counter() - start_time:.3f}s")
+            return response.json()
+        except Exception as e:
+            logger.error(f"💥 [Async Stream] Upload failed: {str(e)}")
+            raise
+
+    @classmethod
     async def upload_bytes(cls, bucket: str, path: str, data: bytes, content_type: str = "application/octet-stream"):
         start_time = time.perf_counter()
         logger.info(f"📤 [Async] Uploading: {path} (bucket: {bucket}, size: {len(data)} bytes)")
