@@ -170,11 +170,24 @@ class StorageClient:
 
     @classmethod
     @asynccontextmanager
-    async def download_stream(cls, bucket: str, path: str):
+    async def download_stream(
+        cls,
+        bucket: str,
+        path: str,
+        format: Optional[str] = None,
+        quality: Optional[int] = None,
+        max_width: Optional[int] = None,
+    ):
         start_time = time.perf_counter()
         logger.info(f"🌊 [Stream] Starting download: {path} (bucket: {bucket})")
         try:
             params = {"bucket": bucket}
+            if format:
+                params["format"] = format
+            if quality is not None:
+                params["quality"] = str(quality)
+            if max_width is not None:
+                params["max_width"] = str(max_width)
             async with cls._async_client.stream("GET", f"/download/{path}", params=params) as response:
                 response.raise_for_status()
                 logger.info(f"✅ [Stream] Connection established for {path} in {time.perf_counter() - start_time:.3f}s")
