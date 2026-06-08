@@ -394,6 +394,57 @@ class StorageClient:
             raise
 
     @classmethod
+    @asynccontextmanager
+    async def download_zip_stream(
+        cls,
+        entries: list,
+        filename: str = "download.zip",
+        output_format: Optional[str] = None,
+        quality: int = 85,
+        max_width: Optional[int] = None,
+    ):
+        """Stream a ZIP archive assembled on-the-fly by the Go storage service.
+
+        The Go sidecar reads each GCS object and pipes it directly into a
+        ``archive/zip`` writer whose output is the HTTP response body — no
+        intermediate disk or full-archive buffer on either side.
+
+        Args:
+            entries: List of ``{"bucket": str, "path": str, "name": str}`` dicts.
+                     ``bucket`` falls back to the server default when omitted.
+                     ``name`` is the filename inside the ZIP.
+            filename: Suggested ZIP filename sent in ``Content-Disposition``.
+            output_format: Optional re-encoding format (``"jpeg"`` or ``"png"``).
+                           When *None* the original file bytes are served as-is
+                           (fastest path — true zero-copy streaming from GCS).
+            quality: JPEG quality (1-95). Ignored when *output_format* is ``"png"``.
+            max_width: Downscale each image to this pixel width preserving ratio.
+                       ``None`` / 0 disables resizing.
+
+        Yields:
+            An async iterator of raw bytes chunks for use in a
+            :class:`~fastapi.responses.StreamingResponse`.
+        """
+        params: dict = {}
+        if output_format:
+            params["format"] = output_format
+            params["quality"] = str(quality)
+        if max_width:
+            params["max_width"] = str(max_width)
+
+        body = {"entries": entries, "filename": filename}
+        logger.info(f"🗜️ [Zip Stream] Requesting {len(entries)} entries → {filename}")
+        start_time = time.perf_counter()
+        try:
+            async with cls._async_client.stream("POST", "/download-zip", json=body, params=params) as response:
+                response.raise_for_status()
+                logger.info(f"✅ [Zip Stream] Connection established in {time.perf_counter() - start_time:.3f}s")
+                yield response.aiter_bytes()
+        except Exception as e:
+            logger.error(f"💥 [Zip Stream] Failed: {str(e)}")
+            raise
+
+    @classmethod
     async def copy_folder(cls, src_prefix: str, dest_prefix: str, bucket: Optional[str] = None):
         """
         Duplicate an entire folder in GCS (Async).
