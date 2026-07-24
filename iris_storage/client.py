@@ -60,62 +60,17 @@ class StorageClient:
             raise
 
     @classmethod
-    async def upload_stream(cls, bucket: str, path: str, file_obj, content_type: str = "application/octet-stream"):
-        """
-        Uploads a file using streaming (chunks) to minimize memory usage.
-        """
-        start_time = time.perf_counter()
-        logger.info(f"🌊 [Async Stream] Uploading: {path} (bucket: {bucket})")
-        
-        async def file_generator():
-            # In some FastAPI versions, seek is sync. 
-            # We wrap it to be safe or just call it normally.
-            try:
-                await file_obj.seek(0)
-            except TypeError:
-                file_obj.file.seek(0)
-
-            # Read in 1MB chunks
-            while True:
-                # Check if read needs to be awaited
-                chunk = file_obj.read(1024 * 1024)
-                if hasattr(chunk, "__await__"):
-                    chunk = await chunk
-                
-                if not chunk:
-                    break
-                yield chunk
-
-        try:
-            params = {"filename": path, "bucket": bucket}
-            headers = {"Content-Type": content_type}
-            
-            # Streaming the generator via 'content'
-            response = await cls._async_client.post(
-                "/upload", 
-                content=file_generator(), 
-                params=params,
-                headers=headers
-            )
-            response.raise_for_status()
-            logger.info(f"✅ [Async Stream] Upload success in {time.perf_counter() - start_time:.3f}s")
-            return response.json()
-        except Exception as e:
-            logger.error(f"💥 [Async Stream] Upload failed: {str(e)}")
-            raise
-
-    @classmethod
-    async def upload_stream_async(cls, bucket: str, path: str, file_obj, content_type: str = None):
+    async def upload_stream(cls, bucket: str, path: str, file_obj, content_type: str = None):
         """
         Asynchronously upload a file using multipart streaming.
 
         The file is read lazily in chunks by httpx and is NEVER fully loaded
-        into memory. This mirrors :meth:`upload_stream_sync` (compatible with the
-        Go sidecar's ``FormFile("file")`` handler) but runs on the async client,
-        so the event loop is not blocked during the upload.
+        into memory. Multipart format, compatible with the Go sidecar's
+        FormFile("file") handler. Runs on the async client, so the event loop
+        is not blocked during the upload.
         """
         start_time = time.perf_counter()
-        logger.info(f"🌊 [Async Multipart] Uploading: {path} (bucket: {bucket})")
+        logger.info(f"🌊 [Async Multipart Stream] Uploading: {path} (bucket: {bucket})")
 
         try:
             # Reset pointer on the underlying file object.
@@ -137,10 +92,10 @@ class StorageClient:
             )
             response.raise_for_status()
 
-            logger.info(f"✅ [Async Multipart] Success in {time.perf_counter() - start_time:.3f}s")
+            logger.info(f"✅ [Async Multipart Stream] Success in {time.perf_counter() - start_time:.3f}s")
             return response.json()
         except Exception as e:
-            logger.error(f"💥 [Async Multipart] Failed: {str(e)}")
+            logger.error(f"💥 [Async Multipart Stream] Upload failed: {str(e)}")
             raise
 
     @classmethod
