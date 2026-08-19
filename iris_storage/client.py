@@ -171,6 +171,7 @@ class StorageClient:
         format: Optional[str] = None,
         quality: Optional[int] = None,
         max_width: Optional[int] = None,
+        deriv_bucket: Optional[str] = None,
     ):
         start_time = time.perf_counter()
         logger.info(f"🌊 [Stream] Starting download: {path} (bucket: {bucket})")
@@ -182,6 +183,10 @@ class StorageClient:
                 params["quality"] = str(quality)
             if max_width is not None:
                 params["max_width"] = str(max_width)
+            # When set, a conversion is served from the shared derivative cache
+            # (materialised once) instead of an in-memory re-encode per request.
+            if deriv_bucket:
+                params["deriv_bucket"] = deriv_bucket
             async with cls._async_client.stream("GET", f"/download/{path}", params=params) as response:
                 response.raise_for_status()
                 logger.info(f"✅ [Stream] Connection established for {path} in {time.perf_counter() - start_time:.3f}s")
