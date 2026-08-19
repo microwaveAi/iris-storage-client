@@ -249,6 +249,37 @@ class StorageClient:
             raise
 
     @classmethod
+    async def signed_url(
+        cls,
+        bucket: str,
+        path: str,
+        *,
+        output_format: Optional[str] = None,
+        quality: Optional[int] = None,
+        max_width: Optional[int] = None,
+        deriv_bucket: Optional[str] = None,
+        expires: int = 900,
+    ) -> dict:
+        """Ask the sidecar for a short-lived V4 signed GET URL.
+
+        With conversion params (output_format/max_width) the sidecar serves a
+        derivative materialised into ``deriv_bucket`` on first use and cached;
+        deriv_bucket is then required. Returns {url, bucket, path, expires_in}.
+        """
+        params = {"bucket": bucket, "expires": expires}
+        if output_format:
+            params["format"] = output_format
+        if quality is not None:
+            params["quality"] = quality
+        if max_width is not None:
+            params["max_width"] = max_width
+        if deriv_bucket:
+            params["deriv_bucket"] = deriv_bucket
+        response = await cls._async_client.get(f"/sign/{path}", params=params)
+        response.raise_for_status()
+        return response.json()
+
+    @classmethod
     async def delete_object(cls, bucket: str, path: str):
         """Delete a single object from GCS via sidecar."""
         logger.info(f"🗑️ [Async] Deleting object: {path} (bucket: {bucket})")
