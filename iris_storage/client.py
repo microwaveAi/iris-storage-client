@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 
 from typing import Optional
 
+from iris_storage.auth import ServiceIdentityAuth
+
 logger = logging.getLogger("iris.storage")
 
 if not logger.handlers:
@@ -17,9 +19,12 @@ STORAGE_PORT = os.getenv("STORAGE_PORT", "5000")
 
 STORAGE_URL = f"{STORAGE_PROTOCOL}://{STORAGE_HOST}:{STORAGE_PORT}"
 
+_AUTH = ServiceIdentityAuth()
+
+
 class StorageClient:
-    _async_client = httpx.AsyncClient(base_url=STORAGE_URL, timeout=60.0)
-    _sync_client = httpx.Client(base_url=STORAGE_URL, timeout=60.0)
+    _async_client = httpx.AsyncClient(base_url=STORAGE_URL, timeout=60.0, auth=_AUTH)
+    _sync_client = httpx.Client(base_url=STORAGE_URL, timeout=60.0, auth=_AUTH)
 
     @classmethod
     async def get_metadata(cls, bucket: str, path: str):
@@ -264,12 +269,16 @@ class StorageClient:
         max_width: Optional[int] = None,
         deriv_bucket: Optional[str] = None,
         expires: int = 900,
+        disposition: Optional[str] = None,
+        filename: Optional[str] = None,
     ) -> dict:
         """Ask the sidecar for a short-lived V4 signed GET URL.
 
         With conversion params (output_format/max_width) the sidecar serves a
         derivative materialised into ``deriv_bucket`` on first use and cached;
-        deriv_bucket is then required. Returns {url, bucket, path, expires_in}.
+        deriv_bucket is then required. ``disposition="attachment"`` (with an
+        optional ``filename``) signs a URL the browser saves as a download.
+        Returns {url, bucket, path, expires_in}.
         """
         params = {"bucket": bucket, "expires": expires}
         if output_format:
@@ -280,9 +289,31 @@ class StorageClient:
             params["max_width"] = max_width
         if deriv_bucket:
             params["deriv_bucket"] = deriv_bucket
+        if disposition:
+            params["disposition"] = disposition
+        if filename:
+            params["filename"] = filename
         response = await cls._async_client.get(f"/sign/{path}", params=params)
         response.raise_for_status()
         return response.json()
+
+    @classmethod
+    async def sign_batch(cls, items: list, expires: int = 900, timeout: Optional[float] = None) -> list:
+        """Sign many objects in ONE sidecar call (POST /sign-batch).
+
+        Each item is a dict with ``bucket`` and ``path`` and optionally
+        ``format``, ``quality``, ``max_width``, ``deriv_bucket``, ``expires``,
+        ``disposition``, ``filename`` (same meaning as :meth:`signed_url`).
+        Returns one entry per item, in order: either {url, bucket, path,
+        expires_in} or {error, status} for that item alone.
+        """
+        response = await cls._async_client.post(
+            "/sign-batch",
+            json={"items": items, "expires": expires},
+            timeout=timeout if timeout is not None else httpx.USE_CLIENT_DEFAULT,
+        )
+        response.raise_for_status()
+        return response.json()["results"]
 
     @classmethod
     async def delete_object(cls, bucket: str, path: str):
