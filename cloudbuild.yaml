@@ -1,0 +1,49 @@
+# Publish iris-storage-client to Artifact Registry on a version tag.
+#
+# Trigger: publish-iris-storage-client (asia-northeast1), on a pushed tag
+#   ^v[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+|\.(dev|post)[0-9]+)?$
+# Release: bump `version` in pyproject.toml, commit, then
+#   git tag vX.Y.Z && git push origin vX.Y.Z
+# The tag MUST equal "v" + the pyproject version (the build refuses otherwise).
+# Artifact Registry versions are immutable: a version is published once; to fix
+# one, release the next version.
+#
+# Consumers install it with poetry from the `iris-python` source
+#   https://asia-northeast1-python.pkg.dev/conduta-275609/iris-python/simple/
+# (Cloud Build passes an access token as the BuildKit secret `ar_token`).
+#
+# Versions published before this file existed (one-time backfill, 2026-10-13),
+# each built from the commit the consumers' lock files pinned:
+#   0.1.0.dev6  = e68bbe9   0.1.0.dev14 = a1c136c   0.1.0.dev15 = e52da99
+#   0.1.0.dev17 = 44f5942   0.1.0       = 7c22587   0.2.0       = 246c20f
+# (devN = `git rev-list --count <commit>`; those commits all said 0.1.0.)
+substitutions:
+  _REPOSITORY: https://asia-northeast1-python.pkg.dev/conduta-275609/iris-python
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - name: 'python:3.12-slim'
+    id: 'build'
+    entrypoint: 'bash'
+    args:
+      - '-ec'
+      - |
+        version=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+        if [ "v$${version}" != "${TAG_NAME}" ]; then
+          echo "tag '${TAG_NAME}' does not match pyproject version '$${version}' (expected tag v$${version})" >&2
+          exit 1
+        fi
+        pip install --quiet --root-user-action=ignore build==1.2.2.post1
+        python -m build --wheel --outdir dist .
+        ls -l dist
+
+# Uploaded by Cloud Build itself (the build's service account has
+# roles/artifactregistry.writer on iris-python).
+artifacts:
+  pythonPackages:
+    - repository: '${_REPOSITORY}'
+      paths: ['dist/*.whl']
+
+timeout: 600s
