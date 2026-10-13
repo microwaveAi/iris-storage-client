@@ -6,11 +6,11 @@ chosen by IRIS_STORAGE_AUTH:
 - ``google``: a Google ID token for IRIS_STORAGE_AUDIENCE (the service's URL),
   fetched from the runtime's credentials (Cloud Run, GKE Workload Identity) and
   refreshed before it expires.
-- ``static``: the token in IRIS_STORAGE_TOKEN, minted by the local stack
-  (local.sh) for this service.
+- ``static``: the token in IRIS_STORAGE_TOKEN, or read from the file named by
+  IRIS_STORAGE_TOKEN_FILE (the local stack mints one per service at start).
 - ``none``: no header.
 
-Unset, the mode is ``static`` when IRIS_STORAGE_TOKEN is set, ``google`` when
+Unset, the mode is ``static`` when IRIS_STORAGE_TOKEN(_FILE) is set, ``google`` when
 IRIS_STORAGE_AUDIENCE is set, else ``none``: a service configured for neither
 keeps calling exactly as before.
 """
@@ -33,7 +33,7 @@ def auth_mode() -> str:
     mode = os.getenv("IRIS_STORAGE_AUTH", "").strip().lower()
     if mode:
         return mode
-    if os.getenv("IRIS_STORAGE_TOKEN"):
+    if os.getenv("IRIS_STORAGE_TOKEN") or os.getenv("IRIS_STORAGE_TOKEN_FILE"):
         return "static"
     if os.getenv("IRIS_STORAGE_AUDIENCE"):
         return "google"
@@ -57,14 +57,31 @@ class ServiceIdentityAuth(httpx.Auth):
         if self.mode not in ("google", "static", "none"):
             logger.error("IRIS_STORAGE_AUTH=%r is not google, static or none: no identity sent", self.mode)
             self.mode = "none"
-        elif self.mode == "static" and not os.getenv("IRIS_STORAGE_TOKEN"):
-            logger.error("IRIS_STORAGE_AUTH=static but IRIS_STORAGE_TOKEN is empty: no identity sent")
+        elif self.mode == "static" and not (os.getenv("IRIS_STORAGE_TOKEN") or os.getenv("IRIS_STORAGE_TOKEN_FILE")):
+            logger.error("IRIS_STORAGE_AUTH=static but IRIS_STORAGE_TOKEN(_FILE) is empty: no identity sent")
         elif self.mode == "google" and not os.getenv("IRIS_STORAGE_AUDIENCE"):
             logger.error("IRIS_STORAGE_AUTH=google but IRIS_STORAGE_AUDIENCE is empty: no identity sent")
 
+    def _file_token(self, path: str) -> Optional[str]:
+        # re-read at most every 5 min: the local stack re-mints tokens at start
+        with self._lock:
+            if self._token and time.monotonic() < self._expires_at:
+                return self._token
+            try:
+                with open(path, encoding="ascii") as f:
+                    self._token = f.read().strip() or None
+            except OSError as exc:
+                logger.warning("iris-storage token file %s unreadable (%s): calling without identity", path, exc)
+                self._token = None
+            self._expires_at = time.monotonic() + (300 if self._token else 30)
+            return self._token
+
     def token(self) -> Optional[str]:
         if self.mode == "static":
-            return os.getenv("IRIS_STORAGE_TOKEN") or None
+            if os.getenv("IRIS_STORAGE_TOKEN"):
+                return os.getenv("IRIS_STORAGE_TOKEN")
+            path = os.getenv("IRIS_STORAGE_TOKEN_FILE")
+            return self._file_token(path) if path else None
         if self.mode != "google":
             return None
         with self._lock:
