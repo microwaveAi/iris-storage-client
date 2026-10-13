@@ -10,7 +10,8 @@
 #
 # Consumers install it with poetry from the `iris-python` source
 #   https://asia-northeast1-python.pkg.dev/conduta-275609/iris-python/simple/
-# (Cloud Build passes an access token as the BuildKit secret `ar_token`).
+# (Cloud Build passes a 15-minute token of iris-ar-reader, read-only, as the
+# BuildKit secret `ar_token`).
 #
 # Versions published before this file existed (one-time backfill, 2026-10-13),
 # each built from the commit the consumers' lock files pinned:
@@ -39,7 +40,8 @@ steps:
         python -m build --wheel --outdir dist .
         ls -l dist
 
-# Uploaded by Cloud Build itself (the build's service account has
+# Uploaded by Cloud Build itself, as the trigger's service account
+# iris-client-publisher@conduta-275609 (the only identity with
 # roles/artifactregistry.writer on iris-python).
 artifacts:
   pythonPackages:
